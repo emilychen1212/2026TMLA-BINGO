@@ -74,6 +74,14 @@
     border:1.5px solid var(--line-soft); font-size:17px; font-weight:700;
     padding:8px 26px; border-radius:30px; letter-spacing:1px;
   }
+  .filters{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:18px}
+  .filter-btn{border:1.5px solid var(--line-soft); background:#fff; color:var(--ink-soft); cursor:pointer; font-weight:700; font-size:14px; padding:8px 18px; border-radius:22px; transition:.15s}
+  .filter-btn:hover{background:var(--mint-soft)}
+  .filter-btn.active{background:var(--c-bg,var(--teal)); border-color:var(--c-bd,var(--teal)); color:var(--c-tx,#fff)}
+  .filter-btn:disabled{opacity:.38; cursor:not-allowed}
+  .filter-btn:disabled:hover{background:#fff}
+  .filter-btn .cnt{font-weight:800; opacity:.75; margin-left:2px}
+
   .reel-frame{
     background:var(--mint-soft); border:2px solid var(--line);
     border-radius:70px 70px 18px 18px; padding:18px;
@@ -329,6 +337,12 @@
           <button class="fs-btn" id="btn-fs">⛶ 全螢幕</button>
         </div>
         <div class="counter"><span id="pool-count">剩餘題數：0</span></div>
+        <div class="filters" id="filters">
+          <button class="filter-btn active" data-cat="">全部 <span class="cnt"></span></button>
+          <button class="filter-btn cat-num" data-cat="數字">數字 <span class="cnt"></span></button>
+          <button class="filter-btn cat-country" data-cat="國家">國家 <span class="cnt"></span></button>
+          <button class="filter-btn cat-city" data-cat="城市">城市 <span class="cnt"></span></button>
+        </div>
         <div class="reel-frame">
           <div class="reel-window">
             <div class="center-line"></div>
@@ -533,21 +547,43 @@ $("#btn-save").onclick=()=>{
 };
 
 /* ---------------- Draw logic ---------------- */
+let currentFilter = "";   // "" = all, otherwise a category
 function resetPool(){ pool = cfgItems().map(x=>({...x})); }
+function filteredPool(){ return currentFilter ? pool.filter(p=>p.cat===currentFilter) : pool; }
 function refreshDraw(){
   $("#draw-title-text").textContent = cfg.title;
   if(pool.length===0) resetPool();
   updatePoolCount();
-  if(!spinning) buildStrip(pool.length?pool:cfgItems());
+  if(!spinning){
+    const src = filteredPool();
+    if(src.length) buildStrip(src);
+    else buildStrip([], currentFilter ? `「${currentFilter}」已全部抽完` : "尚無題目，請先到「題目設定」新增");
+  }
 }
-function updatePoolCount(){ $("#pool-count").textContent = `剩餘題數：${pool.length}`; }
+function updatePoolCount(){
+  $("#pool-count").textContent = `剩餘題數：${filteredPool().length}`;
+  document.querySelectorAll("#filters .filter-btn").forEach(b=>{
+    const c=b.dataset.cat;
+    const n = c ? pool.filter(p=>p.cat===c).length : pool.length;
+    b.querySelector(".cnt").textContent = `(${n})`;
+    b.disabled = (c!=="" && n===0);
+  });
+}
+function setFilter(cat){
+  currentFilter = cat;
+  document.querySelectorAll("#filters .filter-btn").forEach(b=>b.classList.toggle("active", b.dataset.cat===cat));
+  refreshDraw();
+}
+document.querySelectorAll("#filters .filter-btn").forEach(btn=>{
+  btn.addEventListener("click",()=>{ if(spinning) return; setFilter(btn.dataset.cat); });
+});
 
 function itemHTML(p, cls=""){
   return `<div class="reel-item ${catClass(p.cat)} ${cls}"><div class="badge">${escapeHTML(catLabel(p.cat))}</div><div class="q">${escapeHTML(p.q)}</div></div>`;
 }
-function buildStrip(items){
+function buildStrip(items, emptyMsg){
   const strip=$("#reel-strip");
-  if(!items.length){ strip.innerHTML=`<div class="reel-item"><div class="q" style="color:var(--ink-soft)">尚無題目，請先到「題目設定」新增</div></div>`; strip.style.transform="translateY(114px)"; return; }
+  if(!items.length){ strip.innerHTML=`<div class="reel-item"><div class="q" style="color:var(--ink-soft)">${escapeHTML(emptyMsg||"尚無題目，請先到「題目設定」新增")}</div></div>`; strip.style.transform="translateY(114px)"; return; }
   let html=""; const reps=Math.max(6, Math.ceil(60/items.length));
   for(let r=0;r<reps;r++) for(const p of items) html+=itemHTML(p);
   strip.innerHTML=html; strip.style.transform="translateY(0px)";
@@ -560,8 +596,8 @@ const CENTER=(ITEM_H*VISIBLE - ITEM_H)/2;   // offset to center an item
 function startDraw(){
   if(spinning) return;
   if(pool.length===0) resetPool();
-  const items=pool;
-  if(items.length===0){ toast("題庫是空的，請先到「題目設定」輸入"); return; }
+  const items=filteredPool();
+  if(items.length===0){ toast(currentFilter ? `「${currentFilter}」已全部抽完` : "題庫是空的，請先到「題目設定」輸入"); return; }
   const drawN=Math.min(cfg.count, items.length);
   drawnThisRound=pickRandom(items, drawN);
 
@@ -608,6 +644,11 @@ function finishDraw(){
   $("#btn-draw").disabled=false; $("#btn-stop").disabled=true;
   showDrawn(drawnThisRound);
   if(cfg.remove){ for(const w of drawnThisRound){ const i=pool.findIndex(p=>p.q===w.q && p.a===w.a); if(i>=0) pool.splice(i,1); } }
+  if(currentFilter && filteredPool().length===0){
+    currentFilter="";
+    document.querySelectorAll("#filters .filter-btn").forEach(b=>b.classList.toggle("active", b.dataset.cat===""));
+    toast("此類別已抽完，已切回「全部」");
+  }
   updatePoolCount();
   history.push({ round:history.length+1, time:new Date().toLocaleString("zh-TW"), items:drawnThisRound.map(w=>({q:w.q,a:w.a,cat:w.cat||""})) });
   saveHist(history);
