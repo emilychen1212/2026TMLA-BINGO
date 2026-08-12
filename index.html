@@ -28,7 +28,7 @@
 
   /* ---------- Header ---------- */
   header.top{
-    max-width:1120px; margin:0 auto; padding:30px 20px 10px;
+    max-width:1280px; margin:0 auto; padding:30px 20px 10px;
     display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap;
   }
   .brand{display:flex; align-items:center; gap:18px}
@@ -38,7 +38,7 @@
   header .deco{width:270px; max-width:45vw; height:64px}
   @media(max-width:640px){ header .deco{display:none} }
 
-  .wrap{max-width:1120px; margin:0 auto; padding:6px 20px 70px}
+  .wrap{max-width:1280px; margin:0 auto; padding:6px 20px 70px}
 
   /* ---------- Tabs ---------- */
   .tabs{display:flex; gap:8px; flex-wrap:wrap; padding-left:4px}
@@ -143,13 +143,13 @@
     background:var(--c-bg,var(--mint-soft)); border:2px solid var(--c-bd,var(--teal)); color:var(--c-tx,var(--teal-deep));
   }
   .q-card .lbl{font-size:13px; color:var(--teal); font-weight:800; letter-spacing:3px; margin-bottom:14px}
-  .q-card .qtext{font-size:34px; font-weight:800; color:var(--ink); line-height:1.4}
+  .q-card .qtext{font-size:40px; font-weight:800; color:var(--ink); line-height:1.4}
   .see-ans{margin-top:22px; background:var(--ochre); color:#fff; border:none; cursor:pointer; font-size:17px; font-weight:700; padding:12px 32px; border-radius:30px; transition:.15s}
   .see-ans:hover{filter:brightness(.94)}
   .a-box{margin-top:22px; border-top:1px dashed var(--line-soft); padding-top:22px; display:none}
   .a-box.show{display:block; animation:fade .3s ease}
   .a-box .albl{font-size:13px; color:var(--ochre); font-weight:800; letter-spacing:3px; margin-bottom:10px}
-  .a-box .atext{font-size:30px; font-weight:800; color:var(--teal-deep); line-height:1.5}
+  .a-box .atext{font-size:40px; font-weight:800; color:var(--teal-deep); line-height:1.5}
 
   /* ---------- Setup ---------- */
   .admin-lock{max-width:380px; margin:24px auto; text-align:center; background:#fff; border:1.5px solid var(--line-soft); border-radius:16px; padding:36px 32px}
@@ -643,6 +643,7 @@ function finishDraw(){
   $("#reel-strip").style.transform=`translateY(${-finalPos}px)`;   // snap onto winner
   $("#btn-draw").disabled=false; $("#btn-stop").disabled=true;
   showDrawn(drawnThisRound);
+  setTimeout(()=>{ const el=$("#reveal"); if(el) el.scrollIntoView({behavior:"smooth", block:"center"}); }, 150);
   if(cfg.remove){ for(const w of drawnThisRound){ const i=pool.findIndex(p=>p.q===w.q && p.a===w.a); if(i>=0) pool.splice(i,1); } }
   if(currentFilter && filteredPool().length===0){
     currentFilter="";
@@ -709,38 +710,62 @@ let actx=null;
 function initAudio(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } if(actx&&actx.state==="suspended") actx.resume(); }
 function blip(freq,dur,vol){ if(!actx||!cfg.sound) return; const o=actx.createOscillator(),g=actx.createGain(); o.type="triangle"; o.frequency.value=freq; o.connect(g); g.connect(actx.destination); const t=actx.currentTime; g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(t); o.stop(t+dur); }
 
-/* joyful cheer, kept ~1.3s */
+/* big joyful cheer — fanfare + crowd cheer + applause + whistles, ~1.7s */
 function cheer(){
   if(!actx||!cfg.sound) return;
   const t0=actx.currentTime;
-  // bright ascending major chord (triangle) — celebratory
-  const chord=[523.25,659.25,783.99,1046.50];
-  chord.forEach((f,i)=>{
+  // master compressor so it can be loud without harsh clipping
+  const master=actx.createDynamicsCompressor();
+  master.threshold.value=-16; master.knee.value=24; master.ratio.value=4;
+  master.attack.value=0.003; master.release.value=0.25; master.connect(actx.destination);
+
+  // bright ascending fanfare arpeggio
+  const notes=[523.25,659.25,783.99,1046.50,1318.51];
+  notes.forEach((f,i)=>{
     const o=actx.createOscillator(), g=actx.createGain();
     o.type="triangle"; o.frequency.value=f;
-    const on=t0+i*0.05;
+    const on=t0+i*0.065;
     g.gain.setValueAtTime(0.0001,on);
-    g.gain.exponentialRampToValueAtTime(0.12,on+0.04);
-    g.gain.exponentialRampToValueAtTime(0.0001,t0+1.25);
-    o.connect(g); g.connect(actx.destination); o.start(on); o.stop(t0+1.3);
+    g.gain.exponentialRampToValueAtTime(0.22,on+0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+1.6);
+    o.connect(g); g.connect(master); o.start(on); o.stop(t0+1.65);
   });
-  // crowd-cheer swell via filtered noise
-  const dur=1.25, buf=actx.createBuffer(1, Math.floor(actx.sampleRate*dur), actx.sampleRate);
+  // held major triad for body
+  [523.25,659.25,783.99].forEach(f=>{
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type="sawtooth"; o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001,t0+0.32);
+    g.gain.linearRampToValueAtTime(0.05,t0+0.5);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+1.7);
+    o.connect(g); g.connect(master); o.start(t0+0.32); o.stop(t0+1.72);
+  });
+  // crowd-cheer swell (loud, long)
+  const dur=1.7, buf=actx.createBuffer(1, Math.floor(actx.sampleRate*dur), actx.sampleRate);
   const d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
   const src=actx.createBufferSource(); src.buffer=buf;
-  const bp=actx.createBiquadFilter(); bp.type="bandpass"; bp.frequency.value=1700; bp.Q.value=0.7;
+  const bp=actx.createBiquadFilter(); bp.type="bandpass"; bp.frequency.value=1500; bp.Q.value=0.5;
   const g=actx.createGain();
   g.gain.setValueAtTime(0.0001,t0);
-  g.gain.linearRampToValueAtTime(0.16,t0+0.22);
-  g.gain.linearRampToValueAtTime(0.13,t0+0.75);
+  g.gain.linearRampToValueAtTime(0.34,t0+0.28);
+  g.gain.linearRampToValueAtTime(0.26,t0+1.05);
   g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
-  src.connect(bp); bp.connect(g); g.connect(actx.destination); src.start(t0); src.stop(t0+dur);
-  // two quick whistle chirps for excitement
-  [ [0.15,1600,2100], [0.55,1400,1950] ].forEach(([at,f1,f2])=>{
+  src.connect(bp); bp.connect(g); g.connect(master); src.start(t0); src.stop(t0+dur);
+  // applause — rapid short high-passed noise bursts (clapping)
+  for(let k=0;k<18;k++){
+    const at=t0+0.1+Math.random()*1.35;
+    const cb=actx.createBuffer(1, Math.floor(actx.sampleRate*0.05), actx.sampleRate);
+    const cd=cb.getChannelData(0); for(let i=0;i<cd.length;i++) cd[i]=(Math.random()*2-1)*(1-i/cd.length);
+    const cs=actx.createBufferSource(); cs.buffer=cb;
+    const hp=actx.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=2200;
+    const cg=actx.createGain(); cg.gain.value=0.09;
+    cs.connect(hp); hp.connect(cg); cg.connect(master); cs.start(at); cs.stop(at+0.05);
+  }
+  // excited whistle chirps
+  [[0.18,1600,2200],[0.6,1500,2100],[1.05,1750,2350]].forEach(([at,f1,f2])=>{
     const o=actx.createOscillator(), gg=actx.createGain(); o.type="sine";
-    o.frequency.setValueAtTime(f1,t0+at); o.frequency.linearRampToValueAtTime(f2,t0+at+0.18);
-    gg.gain.setValueAtTime(0.0001,t0+at); gg.gain.exponentialRampToValueAtTime(0.09,t0+at+0.04); gg.gain.exponentialRampToValueAtTime(0.0001,t0+at+0.22);
-    o.connect(gg); gg.connect(actx.destination); o.start(t0+at); o.stop(t0+at+0.24);
+    o.frequency.setValueAtTime(f1,t0+at); o.frequency.linearRampToValueAtTime(f2,t0+at+0.2);
+    gg.gain.setValueAtTime(0.0001,t0+at); gg.gain.exponentialRampToValueAtTime(0.13,t0+at+0.04); gg.gain.exponentialRampToValueAtTime(0.0001,t0+at+0.26);
+    o.connect(gg); gg.connect(master); o.start(t0+at); o.stop(t0+at+0.3);
   });
 }
 
